@@ -550,7 +550,7 @@ function nrDachG(e,a,n){nrDL.forEach(([x,y],i)=>{let o=.8+.2*Math.sin(n*2+i*1.3)
 var PHG_SP=60,PHG_X0=36,PHG_MIN=10,phG={cam:0,v:0,pan:null,last:0,room:-1},phGPv=null;
 function phGN(){try{return Math.max(PHG_MIN,d&&+d.galN||0)}catch{return PHG_MIN}}
 function phGMk(n){let a=[];for(let k=0;k<n;k++){let x=PHG_X0+k*PHG_SP;a.push({...Z(x,262,1.1,"white",{floorY:268}),gk:k,gl:0,gx:x},{...Z(x,64,.8,"white",{hang:!0,floorY:150}),gk:k,gl:1,gx:x})}return a}
-function phGRoom(){return{name:"Sichtungsgalerie",gal:1,cost:7e3,light:1.5,hum:1.25,draw:phGDraw,skyY:[0,150],glass:[[0,0,180,150]],outside:"garden",beam:null,cat:[150,268],glows:phGG,always:phGA,lampBar:[60,120,26],humPos:[172,206],spots:phGMk(PHG_MIN)}}
+function phGRoom(){return{name:"Sichtungsgalerie",gal:1,cost:1e5,light:1.5,hum:1.25,draw:phGDraw,skyY:[0,150],glass:[[0,0,180,150]],outside:"garden",beam:null,cat:[150,268],glows:phGG,always:phGA,lampBar:[60,120,26],humPos:[172,206],spots:phGMk(PHG_MIN)}}
 function phGMax(a){let n=(a&&a.spots?a.spots.length:0)>>1;return Math.max(0,PHG_X0+(n-1)*PHG_SP+44-C)}
 function phGOn(){let a=ze();return!!(a&&a.gal)}
 function phGEnsure(a,r){let P=d.plants[r],O_=d.open[r];if(!P||!O_)return;let km=-1;P.forEach((p,i)=>{p&&(km=Math.max(km,i>>1))});te&&te.r===r&&(km=Math.max(km,te.i>>1));let need=Math.max(PHG_MIN,km+7);d.galN!==need&&(d.galN=need);let want=Math.max(need,Math.ceil((phG.cam+C+130-PHG_X0)/PHG_SP)+1),cur=a.spots.length>>1;if(want>cur){for(let k=cur;k<want;k++){let x=PHG_X0+k*PHG_SP;a.spots.push({...Z(x,262,1.1,"white",{floorY:268}),gk:k,gl:0,gx:x},{...Z(x,64,.8,"white",{hang:!0,floorY:150}),gk:k,gl:1,gx:x})}a.spots0=a.spots}for(let i=0;i<a.spots.length;i++){O_[i]||(O_[i]=!0);P[i]===void 0&&(P[i]=null)}}
@@ -776,15 +776,26 @@ btn.addEventListener("click",function(e){e.stopPropagation();var o=!pan.classLis
 document.addEventListener("click",function(e){if(!pan.contains(e.target)&&e.target!==btn){pan.classList.remove("open");btn.setAttribute("aria-expanded","false")}});
 
 /* ===== Lieblingspflanze: Abstimmung aller Spieler (1 Stimme pro Woche) ===== */
-function vGet(i,a,k){return fetch(P[i].u(a,k)).then(function(r){if(r.status===404)return 0;if(!r.ok)throw 0;return r.json().then(function(j){var v=+j.value;return isFinite(v)?v:0})}).catch(function(){return null})}
+function vGet(i,a,k){var ac=null;try{ac=new AbortController()}catch(e){}var to=setTimeout(function(){try{ac&&ac.abort()}catch(e){}},7000);
+  var f=fetch(P[i].u(a,k),ac?{signal:ac.signal,cache:"no-store"}:{cache:"no-store"}).then(function(r){if(r.status===404)return 0;if(!r.ok)throw 0;return r.json().then(function(j){var v=+j.value;return isFinite(v)?v:0})}).catch(function(){return null});
+  var hard=new Promise(function(res){setTimeout(function(){res(null)},8000)});
+  return Promise.race([f,hard]).then(function(v){clearTimeout(to);return v})}
+/* höchstens 4 Anfragen gleichzeitig – sonst blockt der Zähldienst */
+function vPool(items,fn,n){var out=new Array(items.length),k=0;function w(){if(k>=items.length)return Promise.resolve();var j=k++;return fn(items[j],j).then(function(v){out[j]=v;return w()})}
+  var ws=[];for(var x=0;x<Math.min(n,items.length);x++)ws.push(w());return Promise.all(ws).then(function(){return out})}
 function vPlants(){try{var X=window.__pe._pv(),F=X.F,out=[];for(var i=0;i<F.length;i++){var f=F[i];if(f.magic||f.crystal||f.hyb||f.gone)continue;out.push({i:i,id:f.id,name:f.name,img:X.tn(i,-1)})}return out}catch(e){return[]}}
 function vWeek(){var t=new Date(),d0=new Date(t.getFullYear(),t.getMonth(),t.getDate());d0.setDate(d0.getDate()-((d0.getDay()+6)%7));return d0.getFullYear()+"-"+(d0.getMonth()+1)+"-"+d0.getDate()}
 var vCache=null,vAt=0,vBusy=null;
 function vLoad(force){if(!force&&vCache&&Date.now()-vAt<120000)return Promise.resolve(vCache);if(vBusy)return vBusy;
   var L=vPlants();function tryI(i){if(i>=P.length)return Promise.resolve(null);
-    return Promise.all(L.map(function(p){return vGet(i,"get","fav-"+p.id)})).then(function(r){var ok=r.filter(function(x){return x!==null}).length;
-      if(ok<Math.max(1,L.length*.6))return tryI(i+1);L.forEach(function(p,j){p.v=r[j]||0});return{L:L,svc:i}})}
-  vBusy=tryI(0).then(function(res){vBusy=null;if(res){vCache=res;vAt=Date.now()}return res});return vBusy}
+    return vGet(i,"get","fav-"+L[0].id).then(function(t){if(t===null)return tryI(i+1);
+      return vPool(L.slice(1),function(p){return vGet(i,"get","fav-"+p.id)},4).then(function(r){r.unshift(t);var ok=r.filter(function(x){return x!==null}).length;
+      if(ok<Math.max(1,L.length*.5))return tryI(i+1);var old={};try{JSON.parse(ls("ph_vote_cache")||"[]").forEach(function(o){old[o.id]=o.v})}catch(e){}
+      L.forEach(function(p,j){p.v=r[j]!==null?r[j]:(old[p.id]||0)});return{L:L,svc:i}})})}
+  if(!L.length)return Promise.resolve(null);
+  vBusy=tryI(0).then(function(res){vBusy=null;if(res){vCache=res;vAt=Date.now();try{ls("ph_vote_cache",JSON.stringify(res.L.map(function(p){return{id:p.id,v:p.v}})))}catch(e){}}return res},function(){vBusy=null;return null});return vBusy}
+/* letzter bekannter Stand sofort anzeigen, während neu geladen wird */
+function vCached(){try{var c=JSON.parse(ls("ph_vote_cache")||"null");if(!c||!c.length)return null;var m={};c.forEach(function(o){m[o.id]=o.v});var L=vPlants();if(!L.length)return null;L.forEach(function(p){p.v=m[p.id]||0});return{L:L,svc:0,old:1}}catch(e){return null}}
 function vMine(){return ls("ph_vote_w")===vWeek()?ls("ph_vote_sp"):null}
 function vTop(L){var s=L.slice().sort(function(a,b){return b.v-a.v});return s[0]&&s[0].v>0?s[0]:null}
 function favTick(){var el=document.getElementById("plFav");vLoad().then(function(r){if(!r){el.textContent=vMine()?"✓ gewählt":"–";return}var t=vTop(r.L);el.textContent=t?t.name:"noch offen"})}
@@ -792,18 +803,18 @@ var vw=document.createElement("div");vw.id="voteWrap";vw.innerHTML='<div id="vot
 document.body.appendChild(vw);
 vw.addEventListener("click",function(e){if(e.target===vw)vw.classList.remove("show")});
 document.getElementById("vX").onclick=function(){vw.classList.remove("show")};
-function vRender(r,msg){var b=document.getElementById("vBody"),mine=vMine();
+function vRender(r,msg,busy){var b=document.getElementById("vBody"),mine=vMine();
   if(!r){b.innerHTML='<p class="vn">Die Abstimmung ist gerade nicht erreichbar. Versuch es gleich noch mal.</p>'+(mine?'<p class="vn">Deine Stimme diese Woche: <b>'+mine+'</b></p>':"");return}
   var L=r.L.slice().sort(function(a,b){return b.v-a.v||a.name.localeCompare(b.name)}),tot=L.reduce(function(s,p){return s+p.v},0),mx=Math.max(1,L[0]?L[0].v:1);
-  b.innerHTML=(msg?'<p class="vok">'+msg+'</p>':"")+'<p class="vn">'+(mine?'Du hast diese Woche für <b>'+L.filter(function(p){return p.id===mine}).map(function(p){return p.name})[0]+'</b> gestimmt. Ab Montag hast du wieder eine Stimme.':'Jeder Spieler hat <b>eine Stimme pro Woche</b>. Tippe auf deine Lieblingspflanze!')+'</p><p class="vs">'+tot+' Stimmen insgesamt</p><div class="vl">'+
+  b.innerHTML=(msg?'<p class="vok">'+msg+'</p>':"")+'<p class="vn">'+(mine?'Du hast diese Woche für <b>'+L.filter(function(p){return p.id===mine}).map(function(p){return p.name})[0]+'</b> gestimmt. Ab Montag hast du wieder eine Stimme.':'Jeder Spieler hat <b>eine Stimme pro Woche</b>. Tippe auf deine Lieblingspflanze!')+'</p><p class="vs">'+tot+' Stimmen insgesamt'+(busy?' · aktualisiere …':'')+'</p><div class="vl">'+
     L.map(function(p,j){var me=p.id===mine;return'<button class="vr'+(me?" me":"")+'" data-v="'+p.id+'"'+(mine?" disabled":"")+'><span class="vp">'+(p.v>0&&j<3?["🥇","🥈","🥉"][j]:(j+1)+".")+'</span><img src="'+p.img+'" alt=""><span class="vm"><b>'+p.name+(me?" ✓":"")+'</b><i><u style="width:'+Math.round(p.v/mx*100)+'%"></u></i></span><span class="vc">'+p.v+'</span></button>'}).join("")+'</div>';
   b.querySelectorAll("[data-v]").forEach(function(x){x.onclick=function(){vCast(x.getAttribute("data-v"))}})}
 function vCast(id){if(vMine())return;var b=document.getElementById("vBody");b.style.opacity=".55";
-  vLoad().then(function(r){var i=r?r.svc:0;return vGet(i,"hit","fav-"+id)}).then(function(v){b.style.opacity="";
+  (vCache&&!vCache.old?Promise.resolve(vCache):vLoad()).then(function(r){var i=r?r.svc:0;return vGet(i,"hit","fav-"+id)}).then(function(v){b.style.opacity="";
     if(v===null){vRender(vCache,null);alert("Stimme konnte gerade nicht gezählt werden – bitte gleich noch mal versuchen.");return}
     ls("ph_vote_w",vWeek());ls("ph_vote_sp",id);try{navigator.vibrate&&navigator.vibrate([20,30,20])}catch(e){}
-    vLoad(!0).then(function(r){vRender(r,"Danke für deine Stimme! 🌿");favTick()})})}
-document.getElementById("plVote").addEventListener("click",function(e){e.stopPropagation();pan.classList.remove("open");vw.classList.add("show");document.getElementById("vBody").innerHTML='<p class="vn">Stimmen werden geladen …</p>';vLoad(!0).then(function(r){vRender(r)})});
+    vLoad(!0).then(function(r){vRender(r||vCache,"Danke für deine Stimme! 🌿");favTick()})})}
+document.getElementById("plVote").addEventListener("click",function(e){e.stopPropagation();pan.classList.remove("open");vw.classList.add("show");var c=vCache||vCached();if(c){vRender(c,null,1)}else{document.getElementById("vBody").innerHTML='<p class="vn">Stimmen werden geladen …</p>'}vLoad(!0).then(function(r){if(vw.classList.contains("show"))vRender(r||c)})});
 
 tick();setInterval(function(){if(document.visibilityState==="visible")tick()},60000);
 addEventListener("resize",function(){if(pan.classList.contains("open"))place()});
